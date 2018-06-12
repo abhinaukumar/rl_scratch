@@ -113,7 +113,7 @@ def gradient_bandit(bandit,alpha=0.1,steps=1000,keep_baseline=True):
     
     keep_baseline = int(keep_baseline)
     R = []
-    R_av = 0*keep_baseline
+    R_av = 0
     H = np.zeros((bandit.k,))
     pi = np.exp(H)/np.sum(np.exp(H))
     N = np.zeros(shape=(bandit.k,))
