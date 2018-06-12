@@ -27,12 +27,14 @@ class ArgmaxEnv():
         self.dist = np.zeros((self.n_options,))
         self.update_dist()
         self.cur_state = 0
-        self.max_prediction_time = 50
+        self.max_prediction_time = 100
     
+    # Updates the source distribution 
     def update_dist(self):
         self.dist = np.ones((self.n_options,))*self.eps/self.n_options
         self.dist[self.true_option] += 1 - self.eps
         
+    # Step through the environment.
     def step(self,guess):
         self.prediction_time+=1
         if guess != None:
@@ -42,6 +44,7 @@ class ArgmaxEnv():
             self.update_dist()
             self.prediction_time = 0
             
+        # Can only wait up to max_prediction_time number of steps
         elif self.prediction_time > self.max_prediction_time:
             reward = -20.0
             self.true_option = np.random.randint(0,self.n_options)
@@ -49,7 +52,7 @@ class ArgmaxEnv():
             self.update_dist()
             self.prediction_time = 0
         else:
-            reward = - 0.9**((self.max_prediction_time - self.prediction_time)*0.5)
+            reward = - 0.5**((self.max_prediction_time - self.prediction_time)*0.5)
         
         evidence = np.random.multinomial(1,self.dist)
         return (reward,evidence)
@@ -100,7 +103,7 @@ def train(args):
     length=0
     while env.iters < 1000:
         length+=1
-        choice = np.random.choice(np.arange(agent.n_actions)) # we start with all actions equally likely
+        choice = np.random.choice(np.arange(agent.n_actions)) # we start with all actions equally likely and randomly chosen
         agent.channels = agent.decay*agent.channels + agent.scales[choice]*evidence
         #print agent.channels
         prob = softmax(agent.channels)
@@ -132,7 +135,7 @@ def train(args):
             #prob = softmax(agent.channels,agent.scales[choice])
             #guess = np.argmax(prob) if np.max(prob) > 0.7 else None
             #ret = env.step(guess)
-            agent.channels = agent.decay*agent.channels + agent.scales[choice]*evidence
+            agent.channels = agent.decay*agent.channels + agent.scales[choice]*evidence # The scale chosen is a measure of the agent's confidence in the decision
             prob = softmax(agent.channels)
             guess = np.argmax(prob) if np.max(prob) > 0.5 else None
             reward,evidence = env.step(guess)
@@ -140,7 +143,7 @@ def train(args):
             #p[np.argmax(agent.action_values)] += 1 - eps
             #R_av = (reward+ R_av*step)/(step+1)
             
-            agent.action_values[choice] += alpha*(reward + np.max(agent.action_values) - agent.action_values[choice])
+            agent.action_values[choice] += alpha*(reward + np.max(agent.action_values) - agent.action_values[choice]) # Q-learning update
             
             #H[choice] += alpha*(reward - R_av)*(1 - pi[choice])
             #H[:choice] -= alpha*(reward - R_av)*(pi[:choice])
@@ -163,6 +166,9 @@ def train(args):
 #                agent.action_values[choice] = agent.action_values[choice] + (ret-agent.action_values[choice])/float(counts[choice])
 #                agent.reset_channels()
         if not i%50:
+            
+            # Report the performance of the greedy policy every 50 iterations
+            
             avg_reward = 0
             reward = None
             evidence = env.reset()
@@ -216,7 +222,41 @@ def train(args):
     print "eps = {} done in time {}. Final accuracy is {} %".format(env.eps,time.time() - start_time,correct/10.0)
     
     return lengths,corrects,rewards,agent
-          
+   
+# Trying out all scales to find true optimal policy
+       
+def test(env_eps):
+    start_time = time.time()
+    env = ArgmaxEnv(env_eps)
+    agent = Agent(env)
+    corrects = []
+    rewards = []
+    lengths = []
+    
+    for i in range(10):   
+        avg_reward = 0
+        reward = None
+        evidence = env.reset()       
+        correct = 0
+        length = 0
+        while env.iters < 3000:
+            length+=1
+            agent.channels = agent.decay*agent.channels + i*evidence/10.0
+            prob = softmax(agent.channels)
+            guess = np.argmax(prob) if np.max(prob) > 0.3 else None
+            reward,evidence = env.step(guess)
+            avg_reward+=reward
+            if guess != None:
+                agent.reset_channels()
+                correct += int(reward > 0)
+        avg_reward/=3000.0
+        corrects.append(correct/30.0)
+        lengths.append(length/3000.0)
+        rewards.append(avg_reward)
+        env.reset()
+    print "eps = {} done in time {}".format(env.eps,time.time() - start_time)
+    return lengths,corrects,rewards
+
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='ArgMax Environment')
@@ -281,3 +321,39 @@ if __name__ == '__main__':
             plt.plot(rewards[i],label="eps = %.2f" % ((i+7)/10.0))
         plt.legend()
 #        np.savez(str(args.eps)+'.npy',perfs=perfs,lengths=lengths,  scale=scales)
+    
+#if __name__ == '__main__':
+#    p = Pool(10)
+#    ret = p.map(test,np.arange(10)/10.0)
+##        scales = []
+##        perfs = []
+##        lengths = []
+##        for i in range(10):
+##            print i
+##            env = ArgmaxEnv(i/10.0)
+##            agent = Agent(env)
+##            l,perf = train(agent,env)
+##            perfs.append(perf)
+##            lengths.append(l)
+##            q = agent.action_values
+##            scales.append(agent.scales[np.argmax(q)])
+#    
+#    lengths = [r[0] for r in ret]
+#    corrects = [r[1] for r in ret]
+#    rewards = [r[2] for r in ret]
+#
+#    plt.figure()
+#    for i in range(len(corrects)):
+#        plt.plot(np.arange(10)/10.0,corrects[i],label="eps = %.2f" % (i/10.0))
+#    plt.legend()
+#    
+#    plt.figure()
+#    for i in range(len(lengths)):
+#        plt.plot(np.arange(10)/10.0,lengths[i],label="eps = %.2f" % (i/10.0))
+#    plt.legend()
+#    
+#    plt.figure()
+#    for i in range(len(corrects)):
+#        plt.plot(np.arange(10)/10.0,rewards[i],label="eps = %.2f" % (i/10.0))
+#    plt.legend()
+##        np.savez(str(args.eps)+'.npy',perfs=perfs,lengths=lengths,  scale=scales)
