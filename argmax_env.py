@@ -72,7 +72,7 @@ class Agent():
         self.n_options = env.n_options
         self.n_actions = 10
         self.channels = np.zeros((self.n_options,))
-        self.scales = np.arange(5,self.n_actions)/float(self.n_actions),np.array()
+        self.scales = np.arange(self.n_actions)/float(self.n_actions)
         #self.scales = np.linspace(0.75,2.0,10)
         np.random.shuffle(self.scales)
         self.decay = 0.95
@@ -126,7 +126,8 @@ def train(args):
         while env.iters < 1000:
             #e = np.random.uniform()
             #choice = np.argmax(agent.action_values) if e >= eps else np.random.randint(0,agent.n_actions)
-            choice = np.random.choice(np.arange(agent.n_actions),p = softmax(agent.action_values))
+            pi = softmax(agent.action_values)
+            choice = np.random.choice(np.arange(agent.n_actions),p = pi)
 
             agent.channels = agent.decay*agent.channels + agent.scales[choice]*evidence # The scale chosen is a measure of the agent's confidence in the decision
             prob = softmax(agent.channels)
@@ -136,7 +137,7 @@ def train(args):
                 agent.reset_channels()
                 agent.action_values[choice] += alpha*(reward - agent.action_values[choice]) # Q-learning update on termination
             else:
-                agent.action_values[choice] += alpha*(reward + np.max(agent.action_values) - agent.action_values[choice]) # Q-learning update before termination
+                agent.action_values[choice] += alpha*(reward + np.dot(pi,agent.action_values) - agent.action_values[choice]) # Q-learning update before termination
                 
         if not i%50:
             
