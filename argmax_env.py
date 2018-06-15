@@ -55,7 +55,7 @@ class ArgmaxEnv():
             self.update_dist()
             self.prediction_time = 0
         else:
-            reward = -(self.eps - 1)
+            reward = 0
         
         evidence = np.random.multinomial(1,self.dist)
         return (reward,evidence,done)
@@ -92,41 +92,17 @@ def train(args):
     corrects = []
     lengths = []
     rewards = []
-    eps = 1.0
+    eps = 0.2
     q = []
-    q.append(agent.action_values.copy())
-    
-    avg_reward = 0
-    reward = None
-    evidence = env.reset()
-    agent.reset_channels()
-    correct = 0
-    length=0
-    choice = np.argmax(agent.action_values)
-    while env.iters < 1000:
-        length+=1
-        agent.channels = agent.decay*agent.channels + agent.scales[choice]*evidence
-        prob = softmax(agent.channels)
-        guess = np.argmax(prob) if np.max(prob) > 0.5 else None
-        reward,evidence,done = env.step(guess)
-        avg_reward+=reward
+    scales = []
         
-        if done:
-            agent.reset_channels()
-            correct += int(reward != -30)
-    avg_reward/=1000.0
-    corrects.append(correct/10.0)
-    lengths.append(length/1000.0)
-    rewards.append(avg_reward)
-    print "Initial accuracy is {} with average decision time {} and average reward {} in environment with eps {}".format(correct/10.0,length/1000.0,avg_reward,env.eps)
+    for i in range(1000):
         
-    for i in range(5000):
-        
-        if not i%50:
+        if not i%5:
             
             # Report the performance of the greedy policy every 50 iterations
             
-            avg_reward = 0
+            tot_reward = 0
             reward = None
             evidence = env.reset()
             agent.reset_channels()
@@ -139,42 +115,42 @@ def train(args):
                 prob = softmax(agent.channels)
                 guess = np.argmax(prob) if np.max(prob) > 0.5 else None
                 reward,evidence,done = env.step(guess)
-                avg_reward+=reward
+                tot_reward+=reward
                 
                 if done:
                     agent.reset_channels()
                     correct += int(reward != -30)
-            avg_reward/=1000.0   
-            print "Iteration {} in environment with eps {}".format(i,env.eps)
+                    
+            if not i%50:
+                print "Iteration {} in environment with eps {}".format(i,env.eps)
+                
             corrects.append(correct/10.0)
             lengths.append(length/1000.0)
-            rewards.append(avg_reward)
+            rewards.append(tot_reward/1000.0)
+            q.append(agent.action_values.copy())
+            scales.append(agent.scales[np.argmax(agent.action_values)])
             
         
-        eps*=0.99
+        eps*=0.998
+
         length = 0
         reward = None
         evidence = env.reset()
         agent.reset_channels()
-        while env.iters < 100:
+        while env.iters < 200:
             e = np.random.uniform()
             choice = np.argmax(agent.action_values) if e >= eps else np.random.randint(0,agent.n_actions)
-            #pi = softmax(agent.action_values)
-#            pi = np.ones((agent.n_actions,))*eps/agent.n_actions
-#            pi[choice]+= 1 - eps
-            #choice = np.random.choice(np.arange(agent.n_actions),p = pi)
-
+            
             agent.channels = agent.decay*agent.channels + agent.scales[choice]*evidence # The scale chosen is a measure of the agent's confidence in the decision
             prob = softmax(agent.channels)
             guess = np.argmax(prob) if np.max(prob) > 0.5 else None
             reward,evidence,done = env.step(guess)
+            
             if done:
                 agent.reset_channels()
                 agent.action_values[choice] += alpha*(reward - agent.action_values[choice]) # Q-learning update on termination
             else:
                 agent.action_values[choice] += alpha*(reward + np.max(agent.action_values) - agent.action_values[choice]) # Q-learning update before termination
-                
-        q.append(agent.action_values.copy())
 
     avg_reward = 0
     reward = None
@@ -194,19 +170,15 @@ def train(args):
         if done:
             agent.reset_channels()
             correct += int(reward != -30)
-    avg_reward/=1000.0
     corrects.append(correct/10.0)
     lengths.append(length/1000.0)
-    rewards.append(avg_reward)
+    rewards.append(avg_reward/1000.0)
     env.reset()
     print "eps = {} done in time {}. Final accuracy is {}%, average decision time is {} and average reward is {}".format(env.eps,time.time() - start_time,corrects[-1], lengths[-1], rewards[-1])
     
-    return lengths,corrects,rewards,agent,q
+    return lengths,corrects,rewards,scales,q
    
-# Trying out all scales to find true optimal policy
-       
 def test(env_eps):
-    start_time = time.time()
     env = ArgmaxEnv(env_eps)
     agent = Agent(env)
     corrects = []
@@ -216,88 +188,108 @@ def test(env_eps):
     for i in range(10):   
         avg_reward = 0
         reward = None
-        evidence = env.reset()       
+        evidence = env.reset()
+        agent.reset_channels()
         correct = 0
-        length = 0
-        while env.iters < 3000:
+        length=0
+        choice = i+1
+        while env.iters < 5000:
             length+=1
-            agent.channels = agent.decay*agent.channels + i*evidence/10.0
+            agent.channels = agent.decay*agent.channels + choice*evidence
             prob = softmax(agent.channels)
             guess = np.argmax(prob) if np.max(prob) > 0.5 else None
-            reward,evidence = env.step(guess)
+            reward,evidence,done = env.step(guess)
             avg_reward+=reward
-            if guess != None:
+            
+            if done:
                 agent.reset_channels()
-                correct += int(reward > 0)
-        avg_reward/=3000.0
-        corrects.append(correct/30.0)
-        lengths.append(length/3000.0)
-        rewards.append(avg_reward)
+                correct += int(reward != -30)
+            
+        corrects.append(correct/50.0)
+        lengths.append(length/5000.0)
+        rewards.append(avg_reward/5000.0)
         env.reset()
-    print "eps = {} done in time {}".format(env.eps,time.time() - start_time)
+        
     return lengths,corrects,rewards
 
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='ArgMax Environment')
+    parser.add_argument('--test', action='store_true',
+                        help='Test')
     parser.add_argument('--eps', type=float, default=None, metavar='E',
                         help='Spead of the distribution')
     args = parser.parse_args()
     
-    if args.eps != None:
-        ret = train((args.eps,0.01))
-        plt.figure()
-        plt.plot(ret[0],label="eps = %.2f" % (args.eps))
-        plt.figure()
-        plt.plot(ret[1],label="eps = %.2f" % (args.eps))
-        plt.figure()
-        plt.plot(ret[2],label="eps = %.2f" % (args.eps))
+    if not args.test:
+        if args.eps != None:
+            ret = train((args.eps,0.01))
+            plt.figure()
+            plt.plot(ret[0],label="eps = %.2f" % (args.eps))
+            plt.figure()
+            plt.plot(ret[1],label="eps = %.2f" % (args.eps))
+            plt.figure()
+            plt.plot(ret[2],label="eps = %.2f" % (args.eps))
+        else:
+            p = Pool(10)
+            ret = p.map(train,zip(np.arange(10)/10.0,np.ones((10,))*0.001))
+            
+            lengths = [r[0] for r in ret]
+            corrects = [r[1] for r in ret]
+            rewards = [r[2] for r in ret]
+            scales = [r[3] for r in ret]
+            q = [softmax(np.array(r[-1]),axis=-1).T for r in ret]
+            
+            plt.figure()
+            plt.title("Accuracy vs Time")
+            for i in range(len(corrects)):
+                plt.plot(corrects[i],label="eps = %.2f" % (i/10.0))
+            plt.legend()
+            
+            plt.figure()
+            plt.title("Delay vs Time")
+            for i in range(len(lengths)):
+                plt.plot(lengths[i],label="eps = %.2f" % (i/10.0))
+            plt.legend()
+            
+            plt.figure()
+            plt.title("Reward vs Time")
+            for i in range(len(rewards)):
+                plt.plot(rewards[i],label="eps = %.2f" % (i/10.0))
+            plt.legend()
+            
+            fig,axes = plt.subplots(len(q),sharex=True)
+            for i,ax in enumerate(axes):
+                ax.set_title("eps = %.2f" % (i/10.0))
+                ax.imshow(q[i])
+                
+            fig,axes = plt.subplots(len(scales),sharex=True)
+            for i,ax in enumerate(axes):
+                ax.set_title("eps = %.2f" % (i/10.0))
+                ax.plot(scales[i])
+            
     else:
         p = Pool(10)
-        ret = p.map(train,zip(np.arange(10)/10.0,np.ones((10,))*0.01))
+        ret = p.map(test,np.arange(10)/10.0)
         
         lengths = [r[0] for r in ret]
         corrects = [r[1] for r in ret]
         rewards = [r[2] for r in ret]
-        scales = [r[3].scales[np.argmax(r[3].action_values)] for r in ret]
     
         plt.figure()
-        plt.plot(np.arange(10)/1.0,scales)
-        
-        plt.figure()
+        plt.title('Accuracy vs scale')
         for i in range(len(corrects)):
-            plt.plot(corrects[i],label="eps = %.2f" % (i/10.0))
+            plt.plot(np.arange(10)+1,corrects[i],label="eps = %.2f" % (i/10.0))
         plt.legend()
         
         plt.figure()
+        plt.title('Delay vs scale')
         for i in range(len(lengths)):
-            plt.plot(lengths[i],label="eps = %.2f" % (i/10.0))
+            plt.plot(np.arange(10)+1,lengths[i],label="eps = %.2f" % (i/10.0))
         plt.legend()
         
         plt.figure()
+        plt.title('Reward vs scale')
         for i in range(len(rewards)):
-            plt.plot(rewards[i],label="eps = %.2f" % (i/10.0))
+            plt.plot(np.arange(10)+1,rewards[i],label="eps = %.2f" % (i/10.0))
         plt.legend()
-    
-#if __name__ == '__main__':
-#    p = Pool(10)
-#    ret = p.map(test,np.arange(10)/10.0)
-#    
-#    lengths = [r[0] for r in ret]
-#    corrects = [r[1] for r in ret]
-#    rewards = [r[2] for r in ret]
-#
-#    plt.figure()
-#    for i in range(len(corrects)):
-#        plt.plot(np.arange(10)/10.0,corrects[i],label="eps = %.2f" % (i/10.0))
-#    plt.legend()
-#    
-#    plt.figure()
-#    for i in range(len(lengths)):
-#        plt.plot(np.arange(10)/10.0,lengths[i],label="eps = %.2f" % (i/10.0))
-#    plt.legend()
-#    
-#    plt.figure()
-#    for i in range(len(corrects)):
-#        plt.plot(np.arange(10)/10.0,rewards[i],label="eps = %.2f" % (i/10.0))
-#    plt.legend()
