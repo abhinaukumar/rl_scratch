@@ -15,7 +15,7 @@ plt.ion()
 import time
 
 def softmax(x,axis=None):
-    return np.exp(x)/np.expand_dims(np.sum(np.exp(x),axis=-1),axis=-1)
+    return np.exp(x)/np.expand_dims(np.sum(np.exp(x),axis=axis),axis=-1)
 
 class ArgmaxEnv():
     def __init__(self,eps):

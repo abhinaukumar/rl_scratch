@@ -117,6 +117,8 @@ def finish_episode_reinforce_with_baseline(policy,value,policy_optimizer,baselin
     baseline_loss = []
     #rewards = []
     deltas = []
+    print torch.Tensor(policy.rewards).shape,torch.Tensor(value.values).shape
+    
     for (r,v) in zip(policy.rewards[::-1],value.values[::-1]):
         R = r + R*args.gamma
         #rewards.insert(0,R)
