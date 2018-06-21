@@ -145,6 +145,7 @@ class Agent():
         
     def clear_memory(self):
         del self.model.saved_log_probs[:]
+        del self.model.values[:]
             
 def finish_episode(agent,optimizer):
     #policy_loss = []
@@ -162,14 +163,14 @@ def finish_episode(agent,optimizer):
 #    for log_prob,reward in zip(agent.model.saved_log_probs,rewards):
 #        policy_loss.append(-log_prob*reward)
 
-    loss = torch.sum(-torch.cat(agent.model.saved_log_probs)*rewards).to(devices[agent.eps_env]) + torch.sum((rewards - torch.cat(agent.model.values))**2)
     optimizer.zero_grad()
-    
+    loss = torch.sum(-torch.cat(agent.model.saved_log_probs)*rewards + (rewards - torch.cat(agent.model.values))**2)
     loss.backward()
     optimizer.step()
     
     del agent.model.rewards[:]
     del agent.model.saved_log_probs[:]
+    del agent.model.values[:]
     
 def train(args): 
         
@@ -180,7 +181,7 @@ def train(args):
     env = ArgmaxEnv(eps_env)
     agent = Agent(env)
     
-    optimizer = optim.Adam(agent.policy.parameters(), lr=alpha)
+    optimizer = optim.Adam(agent.model.parameters(), lr=alpha)
     
     corrects = []
     lengths = []
@@ -200,7 +201,7 @@ def train(args):
         length = 0
         while env.iters < 1000:
             length+=1
-            choice = agent.act()
+            choice = agent.act(greedy=True)
             agent.channels = agent.decay*agent.channels + agent.scales[choice]*evidence
             prob = softmax(agent.channels)
             guess = np.argmax(prob) if np.max(prob) > 0.5 else None
@@ -225,7 +226,7 @@ def train(args):
         reward = None
         evidence = env.reset()
         agent.reset_channels()
-        while env.iters < 500:
+        while env.iters < 250:
             #e = np.random.uniform()
             #choice = np.argmax(agent.action_values) if e >= eps else np.random.randint(0,agent.n_actions)
             choice = agent.act()
@@ -233,7 +234,7 @@ def train(args):
             prob = softmax(agent.channels)
             guess = np.argmax(prob) if np.max(prob) > 0.5 else None
             reward,evidence,done = env.step(guess)
-            agent.policy.rewards.append(reward)
+            agent.model.rewards.append(reward)
             if done:
                 agent.reset_channels()
                 finish_episode(agent,optimizer)
@@ -246,7 +247,7 @@ def train(args):
     length = 0
     while env.iters < 1000:
         length+=1
-        choice = agent.act()
+        choice = agent.act(greedy=True)
         agent.channels = agent.decay*agent.channels + agent.scales[choice]*evidence
         prob = softmax(agent.channels)
         guess = np.argmax(prob) if np.max(prob) > 0.5 else None
@@ -278,7 +279,7 @@ if __name__ == '__main__':
     #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if not args.test:
         if args.eps != None:
-            ret = train((args.eps,3e-4))
+            ret = train((args.eps,2e-4))
             plt.figure()
             plt.title('Delay vs time')
             plt.plot(ret[0],label="eps = %.2f" % (args.eps))
@@ -291,7 +292,7 @@ if __name__ == '__main__':
             
         else:
             p = Pool(10)
-            ret = p.map(train,zip(np.arange(10)/10.0,np.ones((10,))*3e-4))
+            ret = p.map(train,zip(np.arange(10)/10.0,np.ones((10,))*2e-4))
             
             lengths = [r[0] for r in ret]
             corrects = [r[1] for r in ret]
