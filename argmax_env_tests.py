@@ -119,7 +119,8 @@ def test(args):
 if __name__ == '__main__':
     
     p = Pool(10)
-    ret = p.map(test,zip(np.arange(10)/10.0,[7,6,10,5,8,1,1,1,1,1]))
+    scales = [7,6,10,5,8,1,1,1,1,1]
+    ret = p.map(test,zip(np.arange(10)/10.0,scales))
     
     lengths = [r[0] for r in ret]
     corrects = [r[1] for r in ret]
@@ -128,17 +129,17 @@ if __name__ == '__main__':
     plt.figure()
     plt.title('Accuracy vs threshold')
     for i in range(len(corrects)):
-        plt.plot(np.arange(10)/10.0,corrects[i],label="eps = %.2f" % (i/10.0))
+        plt.plot(np.arange(10)/10.0,corrects[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
     plt.legend()
     
     plt.figure()
     plt.title('Delay vs threshold')
     for i in range(len(lengths)):
-        plt.plot(np.arange(10)/10.0,lengths[i],label="eps = %.2f" % (i/10.0))
+        plt.plot(np.arange(10)/10.0,lengths[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
     plt.legend()
     
     plt.figure()
     plt.title('Reward vs threshold')
     for i in range(len(rewards)):
-        plt.plot(np.arange(10)/10.0,rewards[i],label="eps = %.2f" % (i/10.0))
+        plt.plot(np.arange(10)/10.0,rewards[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
     plt.legend()
