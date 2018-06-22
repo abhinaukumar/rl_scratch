@@ -156,6 +156,7 @@ def finish_episode(agent,optimizer):
     #    rewards.insert(0,R)
     rewards = np.cumsum(agent.model.rewards)
     rewards = torch.Tensor(rewards).to(devices[agent.eps_env])
+    values = torch.squeeze(torch.cat(agent.model.values))
 #    std = 0 if rewards.shape == torch.Size([1]) else rewards.std()
         
 #    rewards = (rewards - rewards.mean()) / (std + np_eps)
@@ -164,7 +165,7 @@ def finish_episode(agent,optimizer):
 #        policy_loss.append(-log_prob*reward)
 
     optimizer.zero_grad()
-    loss = torch.sum(-torch.cat(agent.model.saved_log_probs)*rewards + (rewards - torch.cat(agent.model.values))**2)
+    loss = torch.sum(-torch.cat(agent.model.saved_log_probs)*(rewards - values)) + nn.modules.loss.SmoothL1Loss()(values,rewards)
     loss.backward()
     optimizer.step()
     
