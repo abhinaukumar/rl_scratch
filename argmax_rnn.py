@@ -6,16 +6,13 @@ Created on Thu Jun 21 13:25:21 2018
 @author: nownow
 """
 
-import gym
 import numpy as np
 
 import torch
 from torch import nn
-from torch.distributions import Categorical
 from torch import optim
 
 import argparse
-from itertools import count
 import time
 
 from multiprocessing import Pool
@@ -30,9 +27,9 @@ devices = {}
 def softmax(x):
     return np.exp(x)/np.expand_dims(np.sum(np.exp(x),axis=-1),axis=-1)
 
-class ActorCritic(nn.Module):
+class DQN(nn.Module):
     def __init__(self,input_dim,hidden_dim,n_actions,device):
-        super(ActorCritic,self).__init__()
+        super(DQN,self).__init__()
         self.device = device
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
@@ -40,29 +37,25 @@ class ActorCritic(nn.Module):
         self.layer1 = nn.Linear(input_dim,self.hidden_dim)
         self.gru = nn.GRUCell(self.hidden_dim,self.hidden_dim/2)
         self.action_layer = nn.Linear(self.hidden_dim/2,n_actions+1)
-        self.value_layer = nn.Linear(self.hidden_dim/2,1)
-        self.saved_log_probs = []
         self.rewards = []
         self.values = []
-        self.ht = torch.zeros((1,self.hidden_dim/2)).to(torch.device(self.device))
-        #self.ct = torch.zeros((1,self.hidden_dim/2)).to(torch.device(self.device))
+        self.ht = torch.zeros((1,self.hidden_dim/2)).to(self.device)
+        self.next_q = []
         
     def forward(self,state):
         h = nn.ReLU()(self.layer1(state))
         self.ht = self.gru(h,self.ht)
         
-        y1 = nn.Softmax(dim=-1)(self.action_layer(self.ht))
-        y2 = self.value_layer(self.ht)
-        return y1,y2
+        y1 = self.action_layer(self.ht)
+        return y1
     
     def reset(self):
         
         del self.rewards[:]
-        del self.saved_log_probs[:]
         del self.values[:]
+        del self.next_q[:]
     
-        self.ht = torch.zeros((1,self.hidden_dim/2)).to(torch.device(self.device))
-        #self.ct = torch.zeros((1,self.hidden_dim/2)).to(torch.device(self.device))
+        self.ht = self.ht.new_zeros(self.ht.size())# torch.zeros((1,self.hidden_dim/2)).to(self.device)
         
 class ArgmaxEnv():
     def __init__(self,eps):
@@ -115,82 +108,68 @@ class ArgmaxEnv():
         return np.random.multinomial(1,self.dist)
     
 class Agent():
-    def __init__(self,env,device):
-        self.device = device
+    def __init__(self,env):
         self.n_options = env.n_options
         self.eps_env = env.eps
-        self.n_actions = 10
-        self.model = ActorCritic(self.n_options,25,self.n_options,self.device).to(torch.device(self.device))
-        #self.channels = np.zeros((self.n_options,))
-        self.scales = np.arange(1.0,11.0)
-        np.random.shuffle(self.scales)
-        self.decay = 1.0
-        #self.action_values = np.ones(self.n_actions,)
-        #self.action_values = np.random.normal(1.0,0.25,(self.n_actions,))
-                
+        self.device = devices[self.eps_env]
+        self.model = DQN(self.n_options,25,self.n_options,self.device).to(self.device)
+        self.losses = []
+        self.q = []
+        
     def reset_channels(self):
         self.channels = np.zeros((self.n_options,))
         
-    def act(self,evidence,greedy=False):
-        state = torch.from_numpy(evidence).float().unsqueeze(0).to(torch.device(self.device))
-        probs,value = self.model.forward(state)
-        #probs = self.model.forward(state)
-#        print probs
-        if not greedy:
-            dist = Categorical(probs)
-            a = dist.sample()
-            self.model.saved_log_probs.append(dist.log_prob(a))
-            self.model.values.append(value)
-            return a.item()
+    def act(self,evidence,eps=0.0):
+        state = torch.from_numpy(evidence).float().unsqueeze(0).to(self.device)
+        q = self.model.forward(state)
+        if eps!=0.0:
+            self.q.append(q)
+        e = np.random.uniform()
+        if e > eps:
+            a = torch.argmax(q).item()
         else:
-            return torch.argmax(probs).item()
-        
-    def clear_memory(self):
-        del self.model.saved_log_probs[:]
-        #del self.model.values[:]
+            a = np.random.randint(0,self.n_options + 1)
             
-def finish_episode(agent,optimizer):
-    #policy_loss = []
-    rewards = []
-    
-    #for r in agent.policy.rewards[::-1]:
-    #    R = r + R
-    #    rewards.insert(0,R)
-    rewards = np.cumsum(agent.model.rewards)
-    rewards = torch.Tensor(rewards).to(torch.device(agent.device))
-    values = torch.squeeze(torch.cat(agent.model.values))
-#    std = 0 if rewards.shape == torch.Size([1]) else rewards.std()
+        self.model.values.append(q[:,a])
+        self.model.next_q.append(torch.max(q).unsqueeze(0))
         
-#    rewards = (rewards - rewards.mean()) / (std + np_eps)
-
-#    for log_prob,reward in zip(agent.model.saved_log_probs,rewards):
-#        policy_loss.append(-log_prob*reward)
+        return a if a < self.n_options else None
+        
+def finish_episode(agent,optimizer):
+    agent.model.next_q.append(torch.Tensor([0]).to(agent.device))
+    rewards = torch.Tensor(agent.model.rewards).to(agent.device)
+    values = torch.squeeze(torch.cat(agent.model.values))
+    next_q = torch.squeeze(torch.cat(agent.model.next_q[1:]))
 
     optimizer.zero_grad()
-    #print -torch.cat(agent.model.saved_log_probs)*(rewards - values),rewards,values,torch.cat(agent.model.saved_log_probs)
-    loss = torch.sum(-torch.cat(agent.model.saved_log_probs)*(rewards - values)) + nn.modules.loss.SmoothL1Loss()(values,rewards)
+    loss = nn.modules.MSELoss()(values,rewards + next_q.detach())
     loss.backward()
     optimizer.step()
     
+    agent.losses.append(loss.item())
+    del agent.model.rewards[:]
+    del agent.model.values[:]
+    del agent.model.next_q[:]
+    
 def train(args): 
         
-    eps_env,alpha,device = args
-    #devices[eps_env] = torch.device("cuda:" + str(int(eps_env*10)%8) if torch.cuda.is_available() else "cpu")
+    eps_env,alpha = args
+    devices[eps_env] = torch.device("cuda:" + str(int(eps_env*10)%1))
     
     start_time = time.time()
     env = ArgmaxEnv(eps_env)
-    agent = Agent(env,device)
+    agent = Agent(env)
     
     optimizer = optim.Adam(agent.model.parameters(), lr=alpha)
     
     corrects = []
     lengths = []
     rewards = []
-    #p = []
-    #scales = []
+    
+    eps = 1.0
+    for i in range(150):
         
-    for i in range(100):
-            
+        eps*=0.95
         # Report the performance of the greedy policy every 50 iterations
         
         tot_reward = 0
@@ -199,43 +178,36 @@ def train(args):
         agent.reset_channels()
         correct = 0
         length = 0
-        while env.iters < 100:
+        
+        _rewards = []
+        _lengths = []
+        while env.iters < 500:
             length+=1
-            #print length
-            choice = agent.act(evidence)
-            #agent.channels = agent.decay*agent.channels + agent.scales[choice]*evidence
-            #prob = softmax(agent.channels)
-            guess = choice if choice < agent.n_options else None
+            guess = agent.act(evidence)
             reward,evidence,done = env.step(guess)
-            tot_reward+=reward
             
             if done:
                 agent.reset_channels()
+                _rewards.append(reward)
+                _lengths.append(length)
+                length = 0
                 correct += int(reward != -30)
                 agent.model.reset()
                 
+        corrects.append(correct/5.0)
+        lengths.append([np.mean(_lengths),np.mean(_lengths) - np.std(_lengths),np.mean(_lengths) + np.std(_lengths)])
+        rewards.append([np.mean(_rewards),np.mean(_rewards) - np.std(_rewards),np.mean(_rewards) + np.std(_rewards)])
+        
         if not i%10:
             print "Iteration {} in environment with eps {}".format(i,env.eps)
-            print "{}, {}, {}".format(correct,length/100.0,tot_reward/100.0)
+            print "{}, {}, {}".format(corrects[-1],lengths[-1],rewards[-1])
         
-        corrects.append(correct)
-        lengths.append(length/100.0)
-        rewards.append(tot_reward/100.0)
-            #scales.append(agent.scales[np.argmax(agent.action_values)])
-        agent.clear_memory()
-        
-
         length = 0
         reward = None
         evidence = env.reset()
         agent.reset_channels()
-        while env.iters < 250:
-            #e = np.random.uniform()
-            #choice = np.argmax(agent.action_values) if e >= eps else np.random.randint(0,agent.n_actions)
-            choice = agent.act(evidence)
-            #agent.channels = agent.decay*agent.channels + agent.scales[choice]*evidence # The scale chosen is a measure of the agent's confidence in the decision
-            #prob = softmax(agent.channels)
-            guess = choice if choice < agent.n_options else None
+        while env.iters < 500:
+            guess = agent.act(evidence,eps)
             reward,evidence,done = env.step(guess)
             agent.model.rewards.append(reward)
             if done:
@@ -249,26 +221,27 @@ def train(args):
     agent.reset_channels()
     correct = 0
     length = 0
-    while env.iters < 100:
+    _rewards = []
+    _lengths = []
+    while env.iters < 500:
         length+=1
-        choice = agent.act(evidence)
-        #agent.channels = agent.decay*agent.channels + agent.scales[choice]*evidence
-        #prob = softmax(agent.channels)
-        guess = choice if choice < agent.n_options else None
+        guess = agent.act(evidence)
         reward,evidence,done = env.step(guess)
         tot_reward+=reward
         
         if done:
             agent.reset_channels()
+            _lengths.append(length)
+            length = 0
+            _rewards.append(reward)
             correct += int(reward != -30)
             agent.model.reset()
         
-    corrects.append(correct)
-    lengths.append(length/100.0)
-    rewards.append(tot_reward/100.0)
-    #scales.append(agent.scales[np.argmax(agent.action_values)])
-    agent.clear_memory()
-    
+    corrects.append(correct/5.0)
+    lengths.append([np.mean(_lengths),np.mean(_lengths) - np.std(_lengths),np.mean(_lengths) + np.std(_lengths)])
+    rewards.append([np.mean(_rewards),np.mean(_rewards) - np.std(_rewards),np.mean(_rewards) + np.std(_rewards)])
+        
+    agent.device = agent.model.device = None
     print "eps = {} done in time {}. Final accuracy is {}%, average decision time is {} and average reward is {}".format(env.eps,time.time() - start_time,corrects[-1], lengths[-1], rewards[-1])
     
     return lengths,corrects,rewards,agent
@@ -281,29 +254,35 @@ if __name__ == '__main__':
     parser.add_argument('--eps', type=float, default=None, metavar='E',
                         help='Spead of the distribution')
     args = parser.parse_args()
-    #device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if not args.test:
         if args.eps != None:
-            ret = train((args.eps,1e-4,"cuda:0"))
+            ret = train((args.eps,3e-3))
             plt.figure()
             plt.title('Delay vs time')
-            plt.plot(ret[0],label="eps = %.2f" % (args.eps))
+            plt.plot(np.array(ret[0])[:,0],label="eps = %.2f" % (args.eps))
+            plt.fill_between(np.arange(len(ret[0])),np.array(ret[0])[:,1], np.array(ret[0])[:,2],alpha=0.5)
             plt.figure()
             plt.title('Accuracy vs time')
             plt.plot(ret[1],label="eps = %.2f" % (args.eps))
             plt.figure()
             plt.title('Reward vs time')
-            plt.plot(ret[2],label="eps = %.2f" % (args.eps))
+            plt.plot(np.array(ret[2])[:,0],label="eps = %.2f" % (args.eps))
+            plt.fill_between(np.arange(len(ret[2])),np.array(ret[2])[:,1], np.array(ret[2])[:,2],alpha=0.5)
+            plt.figure()
+            plt.title('Loss vs time')
+            plt.plot(ret[3].losses[::250],label="eps = %.2f" % (args.eps))
             
         else:
             p = Pool(10)
-            ret = p.map(train,zip(np.arange(10)/10.0,np.ones((10,))*2e-4,["cuda:" + str(int(i%8)) for i in range(10)]))
-            
-            lengths = [r[0] for r in ret]
+            ret = p.map(train,zip(np.arange(10)/10.0,np.ones((10,))*3e-3))
+            lengths = [np.array(r[0])[:,0] for r in ret]
+            l_min = [np.array(r[0])[:,1] for r in ret]
+            l_max = [np.array(r[0])[:,2] for r in ret]
             corrects = [r[1] for r in ret]
-            rewards = [r[2] for r in ret]
-#            scales = [r[3] for r in ret]
-#            q = [softmax(np.array(r[-1]),axis=-1).T for r in ret]
+            rewards = [np.array(r[2])[:,0] for r in ret]
+            r_min = [np.array(r[2])[:,1] for r in ret]
+            r_max = [np.array(r[2])[:,2] for r in ret]
+            losses = [r[3].losses[::250] for r in ret]
             
             plt.figure()
             plt.title("Accuracy vs Time")
@@ -315,46 +294,18 @@ if __name__ == '__main__':
             plt.title("Delay vs Time")
             for i in range(len(lengths)):
                 plt.plot(lengths[i],label="eps = %.2f" % (i/10.0))
+                plt.fill_between(np.arange(len(lengths[i])), l_min[i], l_max[i], alpha=0.5)
             plt.legend()
             
             plt.figure()
             plt.title("Reward vs Time")
             for i in range(len(rewards)):
                 plt.plot(rewards[i],label="eps = %.2f" % (i/10.0))
+                plt.fill_between(np.arange(len(rewards[i])), r_min[i], r_max[i], alpha=0.5)
             plt.legend()
             
-#            fig,axes = plt.subplots(len(q),sharex=True)
-#            for i,ax in enumerate(axes):
-#                ax.set_title("eps = %.2f" % (i/10.0))
-#                ax.imshow(q[i])
-#                
-#            fig,axes = plt.subplots(len(scales),sharex=True)
-#            for i,ax in enumerate(axes):
-#                ax.set_title("eps = %.2f" % (i/10.0))
-#                ax.plot(scales[i])
-#            
-#    else:
-#        p = Pool(10)
-#        ret = p.map(test,np.arange(10)/10.0)
-#        
-#        lengths = [r[0] for r in ret]
-#        corrects = [r[1] for r in ret]
-#        rewards = [r[2] for r in ret]
-#    
-#        plt.figure()
-#        plt.title('Accuracy vs scale')
-#        for i in range(len(corrects)):
-#            plt.plot(np.arange(10)+1,corrects[i],label="eps = %.2f" % (i/10.0))
-#        plt.legend()
-#        
-#        plt.figure()
-#        plt.title('Delay vs scale')
-#        for i in range(len(lengths)):
-#            plt.plot(np.arange(10)+1,lengths[i],label="eps = %.2f" % (i/10.0))
-#        plt.legend()
-#        
-#        plt.figure()
-#        plt.title('Reward vs scale')
-#        for i in range(len(rewards)):
-#            plt.plot(np.arange(10)+1,rewards[i],label="eps = %.2f" % (i/10.0))
-#        plt.legend()#        plt.legend()
+            plt.figure()
+            plt.title("Loss vs Time")
+            for i in range(len(rewards)):
+                plt.plot(losses[i],label="eps = %.2f" % (i/10.0))
+            plt.legend()
