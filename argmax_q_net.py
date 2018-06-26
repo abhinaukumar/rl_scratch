@@ -79,7 +79,7 @@ class ArgmaxEnv():
         self.dist = np.zeros((self.n_options,))
         self.update_dist()
         self.cur_state = 0
-        self.max_prediction_time = 50
+        self.max_prediction_time = 30
     
     # Updates the source distribution 
     def update_dist(self):
@@ -91,7 +91,7 @@ class ArgmaxEnv():
         self.prediction_time+=1
         done = False
         if guess != None:
-            reward = 30.0/self.prediction_time if guess == self.true_option else -30.0
+            reward = 30.0 - self.prediction_time if guess == self.true_option else -30.0
             done = True
             self.true_option = np.random.randint(0,self.n_options)
             self.iters+=1   
