@@ -30,7 +30,7 @@ class ArgmaxEnv():
         self.dist = np.zeros((self.n_options,))
         self.update_dist()
         self.cur_state = 0
-        self.max_prediction_time = 50
+        self.max_prediction_time = 30
     
     # Updates the source distribution 
     def update_dist(self):
@@ -42,7 +42,7 @@ class ArgmaxEnv():
         self.prediction_time+=1
         done = False
         if guess != None:
-            reward = 30.0/self.prediction_time if guess == self.true_option else -30.0
+            reward = 30.0 - (self.prediction_time - 1) if guess == self.true_option else -30.0
             done = True
             self.true_option = np.random.randint(0,self.n_options)
             self.iters+=1   
@@ -98,14 +98,14 @@ def test(eps_env):
         _corrects = []
         _lengths = []
         _rewards = []
-        for i in range(5,10):   
+        for i in range(10):   
             avg_reward = 0
             reward = None
             evidence = env.reset()
             agent.reset_channels()
             correct = 0
             length = 0
-            while env.iters < 5000:
+            while env.iters < 10000:
                 length+=1
                 agent.channels = agent.decay*agent.channels + scale*evidence
                 prob = softmax(agent.channels)
@@ -117,9 +117,9 @@ def test(eps_env):
                     agent.reset_channels()
                     correct += int(reward != -30)
                 
-            _corrects.append(correct/50.0)
-            _lengths.append(length/5000.0)
-            _rewards.append(avg_reward/5000.0)
+            _corrects.append(correct/100.0)
+            _lengths.append(length/10000.0)
+            _rewards.append(avg_reward/10000.0)
             env.reset()
         corrects.append(_corrects)
         lengths.append(_lengths)
@@ -140,43 +140,43 @@ if __name__ == '__main__':
 #    corrects = [r[1] for r in ret]
 #    rewards = [r[2] for r in ret]
 
-#    fig = plt.figure()
-#    ax = fig.add_subplot(1,1,1, projection='3d')
-#    ax.set_xlabel('Scale')
-#    ax.set_ylabel('Threshold')
-#    X,Y = np.meshgrid(np.arange(1,11),np.arange(5,10)/10.0)
-#    
-#    ax.set_title('Accuracy vs threshold')
-#    for i in range(len(corrects)):
-##        plt.plot(np.arange(10)/10.0,corrects[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
-#        ax.plot_surface(X,Y,corrects[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=False,label = 'eps = %.2f' % (i/10.0))
-#    ax.legend()
-#    
-#    fig = plt.figure()
-#    ax = fig.add_subplot(1,1,1, projection='3d')
-#    ax.set_xlabel('Scale')
-#    ax.set_ylabel('Threshold')
-#    
-#    ax.set_title('Delay vs threshold')
-#    for i in range(len(lengths)):
-##        plt.plot(np.arange(10)/10.0,lengths[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
-#        ax.plot_surface(X,Y,lengths[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=False,label = 'eps = %.2f' % (i/10.0))
-#    ax.legend()
-#    
-#    fig = plt.figure()
-#    ax = fig.add_subplot(1,1,1, projection='3d')
-#    ax.set_xlabel('Scale')
-#    ax.set_ylabel('Threshold')
-#    
-#    ax.set_title('Reward vs threshold')
-#    for i in range(len(rewards)):
-##        plt.plot(np.arange(10)/10.0,rewards[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
-#        ax.plot_surface(X,Y,rewards[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=False,label = 'eps = %.2f' % (i/10.0))
-#    ax.legend()
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1, projection='3d')
+    ax.set_xlabel('Scale')
+    ax.set_ylabel('Threshold')
+    X,Y = np.meshgrid(np.arange(1,11),np.arange(10)/10.0)
+    
+    ax.set_title('Accuracy vs scale and threshold')
+    for i in range(len(corrects)):
+    #        plt.plot(np.arange(10)/10.0,corrects[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
+        ax.plot_surface(X,Y,corrects[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=False,label = 'eps = %.2f' % (i/10.0))
+    #ax.legend()
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1, projection='3d')
+    ax.set_xlabel('Scale')
+    ax.set_ylabel('Threshold')
+    
+    ax.set_title('Delay vs scale and threshold')
+    for i in range(len(lengths)):
+    #        plt.plot(np.arange(10)/10.0,lengths[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
+        ax.plot_surface(X,Y,lengths[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=False,label = 'eps = %.2f' % (i/10.0))
+    #ax.legend()
+    
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1, projection='3d')
+    ax.set_xlabel('Scale')
+    ax.set_ylabel('Threshold')
+    
+    ax.set_title('Reward vs scale and threshold')
+    for i in range(len(rewards)):
+    #        plt.plot(np.arange(10)/10.0,rewards[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
+        ax.plot_surface(X,Y,rewards[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=False,label = 'eps = %.2f' % (i/10.0))
+    #ax.legend()
     
     for i in range(10):
         scale,threshold = np.unravel_index(np.argmax(rewards[i,:,:], axis=None), rewards[i,:,:].shape)
-        print "Optimal choice for environemt with epsilon {} is scale {} and threshold {} with average reward {}, accuracy {} and delay {}".format(i/10.0,1 + scale,(5 + threshold)/10.0,rewards[i,scale,threshold],corrects[i,scale,threshold],lengths[i,scale,threshold])
+        print "Optimal choice for environment with epsilon {} is scale {} and threshold {} with average reward {}, accuracy {} and delay {}".format(i/10.0,1 + scale,threshold/10.0,rewards[i,scale,threshold],corrects[i,scale,threshold],lengths[i,scale,threshold])
 
 # Output
 #    Optimal choice for environemt with epsilon 0.0 is scale 3 and threshold 0.5 with average reward 30.0, accuracy 100.0 and delay 1.0
@@ -190,4 +190,16 @@ if __name__ == '__main__':
 #    Optimal choice for environemt with epsilon 0.8 is scale 1 and threshold 0.8 with average reward -1.20829582454, accuracy 90.2 and delay 21.9654
 #    Optimal choice for environemt with epsilon 0.9 is scale 1 and threshold 0.7 with average reward -12.8527502214, accuracy 54.1 and delay 27.232
 
-        
+
+# After modifying environment
+#
+#    Optimal choice for environment with epsilon 0.0 is scale 1 and threshold 0.0 with average reward 30.0, accuracy 100.0 and delay 1.0
+#    Optimal choice for environment with epsilon 0.1 is scale 4 and threshold 0.9 with average reward 28.6514, accuracy 99.73 and delay 2.192
+#    Optimal choice for environment with epsilon 0.2 is scale 2 and threshold 0.8 with average reward 27.9099, accuracy 99.54 and delay 2.8208
+#    Optimal choice for environment with epsilon 0.3 is scale 2 and threshold 0.8 with average reward 26.9633, accuracy 98.76 and delay 3.3173
+#    Optimal choice for environment with epsilon 0.4 is scale 2 and threshold 0.9 with average reward 25.7409, accuracy 99.39 and delay 4.9208
+#    Optimal choice for environment with epsilon 0.5 is scale 2 and threshold 0.9 with average reward 24.171, accuracy 98.33 and delay 5.9132
+#    Optimal choice for environment with epsilon 0.6 is scale 2 and threshold 0.9 with average reward 21.2842, accuracy 95.75 and delay 7.4413
+#    Optimal choice for environment with epsilon 0.7 is scale 2 and threshold 0.9 with average reward 16.0094, accuracy 89.72 and delay 9.85
+#    Optimal choice for environment with epsilon 0.8 is scale 1 and threshold 0.6 with average reward 6.5203, accuracy 76.44 and delay 14.1006
+#    Optimal choice for environment with epsilon 0.9 is scale 1 and threshold 0.5 with average reward -9.8193, accuracy 42.06 and delay 14.1068
