@@ -98,7 +98,7 @@ def test(eps_env):
         _corrects = []
         _lengths = []
         _rewards = []
-        for i in range(10):   
+        for i in range(5,10):   
             avg_reward = 0
             reward = None
             evidence = env.reset()
@@ -144,7 +144,7 @@ if __name__ == '__main__':
     ax = fig.add_subplot(1,1,1, projection='3d')
     ax.set_xlabel('Scale')
     ax.set_ylabel('Threshold')
-    X,Y = np.meshgrid(np.arange(1,11),np.arange(10)/10.0)
+    X,Y = np.meshgrid(np.arange(1,11),np.arange(5,10)/10.0)
     
     ax.set_title('Accuracy vs scale and threshold')
     for i in range(len(corrects)):
@@ -176,7 +176,7 @@ if __name__ == '__main__':
     
     for i in range(10):
         scale,threshold = np.unravel_index(np.argmax(rewards[i,:,:], axis=None), rewards[i,:,:].shape)
-        print "Optimal choice for environment with epsilon {} is scale {} and threshold {} with average reward {}, accuracy {} and delay {}".format(i/10.0,1 + scale,threshold/10.0,rewards[i,scale,threshold],corrects[i,scale,threshold],lengths[i,scale,threshold])
+        print "Optimal choice for environment with epsilon {} is scale {} and threshold {} with average reward {}, accuracy {} and delay {}".format(i/10.0,1 + scale,(5 + threshold)/10.0,rewards[i,scale,threshold],corrects[i,scale,threshold],lengths[i,scale,threshold])
 
 # Output
 #    Optimal choice for environemt with epsilon 0.0 is scale 3 and threshold 0.5 with average reward 30.0, accuracy 100.0 and delay 1.0
