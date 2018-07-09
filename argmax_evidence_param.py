@@ -42,6 +42,16 @@ class ArgmaxEnv():
         self.update_dist()
         self.cur_state = 0
         self.max_prediction_time = 50
+        self.binary = np.array([[0,0,0,0],
+                                [0,0,0,1],
+                                [0,0,1,0],
+                                [0,0,1,1],
+                                [0,1,0,0],
+                                [0,1,0,1],
+                                [0,1,1,0],
+                                [0,1,1,1],
+                                [1,0,0,0],
+                                [1,0,0,1]])
     
     # Updates the source distribution 
     def update_dist(self):
@@ -71,7 +81,7 @@ class ArgmaxEnv():
         else:
             reward = 0
         
-        evidence = np.random.multinomial(1,self.dist)
+        evidence = self.binary[np.random.multinomial(1,self.dist)]
         return (reward,evidence,done)
     
     def reset(self):
