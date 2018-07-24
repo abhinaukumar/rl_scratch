@@ -70,7 +70,7 @@ class ArgmaxEnv():
 class Agent():
     def __init__(self,env):
         self.n_options = env.n_options
-        self.n_scales = 10
+        self.n_scales = 5
         self.n_thresholds = 5
         self.n_actions = self.n_scales * self.n_thresholds
         self.channels = np.zeros((self.n_options,))
@@ -140,13 +140,13 @@ def train(args):
             scales.append(1 + np.argmax(agent.action_values))
             
         
-        eps*=0.95
+        eps*=0.998
 
         length = 0
         reward = None
         evidence = env.reset()
         agent.reset_channels()
-        while env.iters < 500:
+        while env.iters < 200:
             e = np.random.uniform()
             choice = np.argmax(agent.action_values) if e >= eps else np.random.randint(0,agent.n_actions)
             scale = 1 + choice/agent.n_thresholds
@@ -198,6 +198,8 @@ def train(args):
 
 if __name__ == '__main__':
     
+    np.random.seed(0)
+    
     parser = argparse.ArgumentParser(description='ArgMax Environment')
     parser.add_argument('--test', action='store_true',
                         help='Test')
@@ -221,8 +223,8 @@ if __name__ == '__main__':
         plt.figure()
         
     else:
-        p = Pool(10)
-        ret = p.map(train,zip(np.arange(10)/10.0,np.ones((10,))*2e-2))
+        p = Pool(5)
+        ret = p.map(train,zip(np.arange(5)/5.0,np.ones((5,))*1e-3))
         lengths = [np.array(r[0])[:,0] for r in ret]
         l_min = [np.array(r[0])[:,1] for r in ret]
         l_max = [np.array(r[0])[:,2] for r in ret]
@@ -235,20 +237,20 @@ if __name__ == '__main__':
         plt.figure()
         plt.title("Accuracy vs Time")
         for i in range(len(corrects)):
-            plt.plot(corrects[i],label="eps = %.2f" % (i/10.0))
+            plt.plot(corrects[i],label="eps = %.2f" % (i/5.0))
         plt.legend()
         
         plt.figure()
         plt.title("Delay vs Time")
         for i in range(len(lengths)):
-            plt.plot(lengths[i],label="eps = %.2f" % (i/10.0))
+            plt.plot(lengths[i],label="eps = %.2f" % (i/5.0))
             #plt.fill_between(np.arange(len(lengths[i])), l_min[i], l_max[i], alpha=0.5)
         plt.legend()
         
         plt.figure()
         plt.title("Reward vs Time")
         for i in range(len(rewards)):
-            plt.plot(rewards[i],label="eps = %.2f" % (i/10.0))
+            plt.plot(rewards[i],label="eps = %.2f" % (i/5.0))
             #plt.fill_between(np.arange(len(rewards[i])), r_min[i], r_max[i], alpha=0.5)
         plt.legend()
         
