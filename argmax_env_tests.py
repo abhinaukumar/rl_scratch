@@ -7,6 +7,7 @@ Created on Wed Jun 20 15:22:19 2018
 """
 
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 import argparse
 from multiprocessing import Pool
@@ -16,6 +17,10 @@ from mpl_toolkits.mplot3d import axes3d, Axes3D
 plt.ion()
 
 import time
+
+font = {'size': 13}
+
+matplotlib.rc('font', **font)
 
 def softmax(x,axis=None):
     return np.exp(x)/np.expand_dims(np.sum(np.exp(x),axis=axis),axis=-1)
@@ -96,7 +101,7 @@ def test(eps_env):
     rewards = []
     lengths = []
     
-    for scale in range(1,11):
+    for scale in range(1,6):
         print "scale {} in eps {}".format(scale,eps_env)
         _corrects = []
         _lengths = []
@@ -141,44 +146,50 @@ if __name__ == '__main__':
     rewards = ret[:,2,:,:]
     
     colours = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
-#    lengths = [r[0] for r in ret]
-#    corrects = [r[1] for r in ret]
-#    rewards = [r[2] for r in ret]
-
-    fig = plt.figure()
-    ax = fig.add_subplot(1,1,1, projection='3d')
-    ax.set_xlabel('Scale')
-    ax.set_ylabel('Threshold')
-    ax.set_zlabel('Accuracy in %')
-    X,Y = np.meshgrid(np.arange(1,11),np.arange(5,10)/10.0)
     
-    ax.set_title('Accuracy vs scale and threshold')
+    fig = plt.figure()
+    ax1 = fig.add_subplot(1,1,1, projection='3d')
+#    ax1.axis('square')
+    ax1.set_xticks(np.arange(1.0,6.0,1.0))
+    ax1.set_yticks(np.arange(0.5,1.0,0.1))
+    ax1.set_xlabel(r'Scale ($\alpha$)')
+    ax1.set_ylabel('Threshold ($T$)')
+    ax1.set_zlabel('Accuracy in %')
+    X,Y = np.meshgrid(np.arange(1,6),np.arange(5,10)/10.0)
+    
+    ax1.set_title('Accuracy vs scale and threshold')
     for i in range(len(corrects)):
     #        plt.plot(np.arange(10)/10.0,corrects[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
-        ax.plot_surface(X,Y,corrects[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=True,label = 'eps = %.2f' % (i/5.0),color = colours[i])
-    ax.legend()
+        ax1.plot_surface(X,Y,corrects[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=True,label = '$\epsilon$ = %.2f' % (i/5.0),color = colours[i])
+    #ax.legend()
     
     fig = plt.figure()
-    ax = fig.add_subplot(1,1,1, projection='3d')
-    ax.set_xlabel('Scale')
-    ax.set_ylabel('Threshold')
-    ax.set_zlabel('Decision time')
-    ax.set_title('Decision time vs scale and threshold')
+    ax2 = fig.add_subplot(1,1,1, projection='3d')
+#    ax2.axis('square')
+    ax2.set_xticks(np.arange(1.0,6.0,1.0))
+    ax2.set_yticks(np.arange(0.5,1.0,0.1))
+    ax2.set_xlabel(r'Scale ($\alpha$)')
+    ax2.set_ylabel('Threshold ($T$)')
+    ax2.set_zlabel('Decision time')
+    ax2.set_title('Decision time vs scale and threshold')
     for i in range(len(lengths)):
     #        plt.plot(np.arange(10)/10.0,lengths[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
-        ax.plot_surface(X,Y,lengths[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=True,label = 'eps = %.2f' % (i/5.0),color = colours[i])
-    ax.legend()
+        ax2.plot_surface(X,Y,lengths[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=True,label = '$\epsilon$ = %.2f' % (i/5.0),color = colours[i])
+    #ax.legend()
     
     fig = plt.figure()
-    ax = fig.add_subplot(1,1,1, projection='3d')
-    ax.set_xlabel('Scale')
-    ax.set_ylabel('Threshold')
-    ax.set_zlabel('Reward')
-    ax.set_title('Reward vs scale and threshold')
+    ax3 = fig.add_subplot(1,1,1, projection='3d')
+    ax3.set_xticks(np.arange(1.0,6.0,1.0))
+    ax3.set_yticks(np.arange(0.5,1.0,0.1))
+#    ax3.axis('square')
+    ax3.set_xlabel(r'Scale ($\alpha$)')
+    ax3.set_ylabel('Threshold ($T$)')
+    ax3.set_zlabel('Reward')
+    ax3.set_title('Reward vs scale and threshold')
     for i in range(len(rewards)):
     #        plt.plot(np.arange(10)/10.0,rewards[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
-        ax.plot_surface(X,Y,rewards[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=True,label = 'eps = %.2f' % (i/5.0),color = colours[i])
-    ax.legend()
+        ax3.plot_surface(X,Y,rewards[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=True,label = '$\epsilon$ = %.2f' % (i/5.0),color = colours[i])
+    #ax.legend()
     
     for i in range(5):
         scale,threshold = np.unravel_index(np.argmax(rewards[i,:,:], axis=None), rewards[i,:,:].shape)
