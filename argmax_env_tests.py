@@ -18,9 +18,10 @@ plt.ion()
 
 import time
 
-font = {'size': 13}
-
+font = {'size': 25}
 matplotlib.rc('font', **font)
+matplotlib.rc('xtick',labelsize=25)
+matplotlib.rc('ytick',labelsize=25)
 
 def softmax(x,axis=None):
     return np.exp(x)/np.expand_dims(np.sum(np.exp(x),axis=axis),axis=-1)
@@ -94,26 +95,25 @@ class Agent():
         self.channels = np.zeros((self.n_options,))
         
 def test(eps_env):
-    #eps_env,scale = args
     env = ArgmaxEnv(eps_env)
     agent = Agent(env)
     corrects = []
     rewards = []
     lengths = []
     
-    for scale in range(1,6):
-        print "scale {} in eps {}".format(scale,eps_env)
+    for scale in range(1,2):
+        print "In eps {}".format(eps_env)
         _corrects = []
         _lengths = []
         _rewards = []
-        for i in range(5,10):   
+        for i in range(1,10):   
             avg_reward = 0
             reward = None
             evidence = env.reset()
             agent.reset_channels()
             correct = 0
             length = 0
-            while env.iters < 10000:
+            while env.iters < 50000:
                 length+=1
                 agent.channels = agent.decay*agent.channels + scale*evidence
                 prob = softmax(agent.channels)
@@ -125,9 +125,9 @@ def test(eps_env):
                     agent.reset_channels()
                     correct += int(reward != -30)
                 
-            _corrects.append(correct/100.0)
-            _lengths.append(length/10000.0)
-            _rewards.append(avg_reward/10000.0)
+            _corrects.append(correct/500.0)
+            _lengths.append(length/50000.0)
+            _rewards.append(avg_reward/50000.0)
             env.reset()
         corrects.append(_corrects)
         lengths.append(_lengths)
@@ -147,53 +147,10 @@ if __name__ == '__main__':
     
     colours = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
     
-    fig = plt.figure()
-    ax1 = fig.add_subplot(1,1,1, projection='3d')
-#    ax1.axis('square')
-    ax1.set_xticks(np.arange(1.0,6.0,1.0))
-    ax1.set_yticks(np.arange(0.5,1.0,0.1))
-    ax1.set_xlabel(r'Scale ($\alpha$)')
-    ax1.set_ylabel('Threshold ($T$)')
-    ax1.set_zlabel('Accuracy in %')
-    X,Y = np.meshgrid(np.arange(1,6),np.arange(5,10)/10.0)
-    
-    ax1.set_title('Accuracy vs scale and threshold')
-    for i in range(len(corrects)):
-    #        plt.plot(np.arange(10)/10.0,corrects[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
-        ax1.plot_surface(X,Y,corrects[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=True,label = '$\epsilon$ = %.2f' % (i/5.0),color = colours[i])
-    #ax.legend()
-    
-    fig = plt.figure()
-    ax2 = fig.add_subplot(1,1,1, projection='3d')
-#    ax2.axis('square')
-    ax2.set_xticks(np.arange(1.0,6.0,1.0))
-    ax2.set_yticks(np.arange(0.5,1.0,0.1))
-    ax2.set_xlabel(r'Scale ($\alpha$)')
-    ax2.set_ylabel('Threshold ($T$)')
-    ax2.set_zlabel('Decision time')
-    ax2.set_title('Decision time vs scale and threshold')
-    for i in range(len(lengths)):
-    #        plt.plot(np.arange(10)/10.0,lengths[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
-        ax2.plot_surface(X,Y,lengths[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=True,label = '$\epsilon$ = %.2f' % (i/5.0),color = colours[i])
-    #ax.legend()
-    
-    fig = plt.figure()
-    ax3 = fig.add_subplot(1,1,1, projection='3d')
-    ax3.set_xticks(np.arange(1.0,6.0,1.0))
-    ax3.set_yticks(np.arange(0.5,1.0,0.1))
-#    ax3.axis('square')
-    ax3.set_xlabel(r'Scale ($\alpha$)')
-    ax3.set_ylabel('Threshold ($T$)')
-    ax3.set_zlabel('Reward')
-    ax3.set_title('Reward vs scale and threshold')
-    for i in range(len(rewards)):
-    #        plt.plot(np.arange(10)/10.0,rewards[i],label="eps = %.2f, scale = %d" % (i/10.0, scales[i]))
-        ax3.plot_surface(X,Y,rewards[i,:,:].T,rstride=1, cstride=1, linewidth=0, antialiased=True,label = '$\epsilon$ = %.2f' % (i/5.0),color = colours[i])
-    #ax.legend()
-    
+
     for i in range(5):
-        scale,threshold = np.unravel_index(np.argmax(rewards[i,:,:], axis=None), rewards[i,:,:].shape)
-        print "Optimal choice for environment with epsilon {} is scale {} and threshold {} with average reward {}, accuracy {} and delay {}".format(i/5.0,1 + scale,(5 + threshold)/10.0,rewards[i,scale,threshold],corrects[i,scale,threshold],lengths[i,scale,threshold])
+        threshold = (np.argmax(rewards[i,0,:]) + 1)/10.0
+        print "Optimal choice for environment with epsilon {} is threshold {} with average reward {}, accuracy {} and delay {}".format(i/5.0,threshold,rewards[i,0,int(10*threshold - 1)],corrects[i,0,int(10*threshold - 1)],lengths[i,0,int(10*threshold - 1)])
 
 # Output
 #    Optimal choice for environemt with epsilon 0.0 is scale 3 and threshold 0.5 with average reward 30.0, accuracy 100.0 and delay 1.0
@@ -229,3 +186,16 @@ if __name__ == '__main__':
 #    Optimal choice for environment with epsilon 0.4 is scale 2 and threshold 0.9 with average reward 25.1314, accuracy 99.01 and delay 5.32
 #    Optimal choice for environment with epsilon 0.6 is scale 1 and threshold 0.6 with average reward 18.406, accuracy 93.46 and delay 9.3273
 #    Optimal choice for environment with epsilon 0.8 is scale 1 and threshold 0.5 with average reward -7.9188, accuracy 45.9 and delay 13.8281
+
+    plt.figure()
+    plt.title('Reward vs threshold')
+    for i in range(len(rewards)):
+        plt.plot(np.arange(1,10)/10.0,rewards[i,0,:])
+    plt.figure()
+    plt.title('Decision time vs threshold')
+    for i in range(len(lengths)):
+        plt.plot(np.arange(1,10)/10.0,lengths[i,0,:])
+    plt.figure()
+    plt.title('Accuracy vs threshold')
+    for i in range(len(corrects)):
+        plt.plot(np.arange(1,10)/10.0,corrects[i,0,:])
