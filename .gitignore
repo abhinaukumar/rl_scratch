@@ -1,5 +1,3 @@
 # Compiled modules #
 *.pyc
 *.pkl
-argmax*.py
-
